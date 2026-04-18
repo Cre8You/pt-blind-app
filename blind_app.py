@@ -2,10 +2,10 @@ import streamlit as st
 import google.generativeai as genai
 
 # ページ設定
-st.set_page_config(page_title="理学療法評価AI（Yudai式・音声入力版）", layout="centered")
+st.set_page_config(page_title="理学療法評価AI（Yudai式・ブラウザ録音版）", layout="centered")
 
 st.title("🦴 AI理学療法アシスタント")
-st.write("※下の枠にカーソルを合わせ、マイクを使って評価内容を自由に喋ってください。")
+st.write("※下の「マイク」ボタンを押し、評価内容を自由に喋って録音してください。")
 
 # --- サイドバー（設定用） ---
 with st.sidebar:
@@ -28,12 +28,9 @@ disease_name = st.text_input("病名", "例：腰椎椎間板ヘルニア")
 
 st.divider()
 
-st.header("🎤 評価の音声入力")
-voice_input = st.text_area(
-    "ここに評価メモを音声で入力（項目順はバラバラでOK！）",
-    height=250,
-    placeholder="例：安静時NRSは2。ROMは屈曲120度で痛みあり。考察としては大腿四頭筋の筋力低下が原因と推測..."
-)
+st.header("🎤 評価の直接録音")
+# ブラウザ上で直接録音できるマイク部品
+audio_data = st.audio_input("マイクのボタンを押して録音開始／停止")
 
 st.divider()
 
@@ -41,18 +38,17 @@ st.divider()
 if st.button("🚀 Yudai式：カルテと計画書を作成", use_container_width=True):
     if not gemini_key:
         st.error("左のサイドバーからAPIキーを入力してください")
-    elif not voice_input:
-        st.warning("音声入力データがありません")
+    elif audio_data is None:
+        st.warning("音声が録音されていません")
     else:
-        with st.spinner("AIが指定された書式で厳格に作成中です...⏳"):
-            # 期限項目を削除し、Yudaiさんの指定フォーマットを組み込んだプロンプト
-            prompt = f"""
-あなたは19年の経験を持つベテラン理学療法士です。以下の音声入力による評価データから、指定された【文字数制限】と【条件】を厳格に守って文章を作成してください。
+        with st.spinner("AIが音声を聴き取り、指定された書式で作成中です...⏳"):
+            # プロンプトの文章部分
+            prompt_text = f"""
+あなたは19年の経験を持つベテラン理学療法士です。一緒に送信した「音声データ（評価メモ）」を聴き取り、以下の指定された【文字数制限】と【条件】を厳格に守って文章を作成してください。
 
 【データ】
 ・患者ID：{patient_id}
 ・病名：{disease_name}
-・評価メモ（音声入力）：{voice_input}
 
 【出力形式・条件】
 以下の構成と文字数制限を必ず遵守して出力してください。
@@ -82,7 +78,17 @@ if st.button("🚀 Yudai式：カルテと計画書を作成", use_container_wid
             try:
                 genai.configure(api_key=gemini_key)
                 model = genai.GenerativeModel(selected_model)
-                response = model.generate_content(prompt)
+                
+                # Geminiに「テキスト」と「録音した音声ファイル」を同時に渡す！
+                prompt_parts = [
+                    prompt_text,
+                    {
+                        "mime_type": "audio/wav",
+                        "data": audio_data.getvalue()
+                    }
+                ]
+                
+                response = model.generate_content(prompt_parts)
                 
                 st.header("✨ 生成結果")
                 st.text_area("結果（コピーして使用してください）", response.text, height=700)
